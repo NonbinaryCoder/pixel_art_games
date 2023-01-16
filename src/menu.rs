@@ -3,24 +3,35 @@ use bevy_egui::{
     egui::{self, RichText, TextStyle},
     EguiContext, EguiPlugin,
 };
+use iyes_loopless::prelude::*;
 
-use crate::{game::Game, ordering::Ordering};
+use crate::{
+    art::Art,
+    game::GameType,
+    ordering::{CurrentOrdering, OrderingType, Orderings},
+    GameState,
+};
 
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugin(EguiPlugin).add_system(show_menu_system);
+        app.add_plugin(EguiPlugin)
+            .add_system(show_menu_system.run_in_state(GameState::MainMenu));
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn show_menu_system(
+    mut commands: Commands,
     mut egui_context: ResMut<EguiContext>,
     windows: Res<Windows>,
-    mut ordering: Local<Ordering>,
+    mut ordering: Local<OrderingType>,
     mut is_reversed: Local<bool>,
     mut is_by_color: Local<bool>,
-    mut game: Local<Game>,
+    mut game: Local<GameType>,
+    mut orderings: ResMut<Orderings>,
+    art: Res<Art>,
 ) {
     let window_width = windows.get_primary().map(Window::width).unwrap_or(200.0);
     let set_style = |ui: &mut egui::Ui| {
@@ -47,9 +58,9 @@ pub fn show_menu_system(
                         set_ordering = new_ordering;
                     };
                 };
-                show_option(Ordering::Default, "Default");
-                show_option(Ordering::SideToSide, "Side-to-Side");
-                show_option(Ordering::Spiral, "Spiral");
+                show_option(OrderingType::Default, "Default");
+                show_option(OrderingType::SideToSide, "Side-to-Side");
+                show_option(OrderingType::Spiral, "Spiral");
 
                 ui.add_space(30.0);
 
@@ -105,8 +116,8 @@ pub fn show_menu_system(
                         set_game = new_game;
                     };
                 };
-                show_option(Game::AppearTest, "Appear Test");
-                show_option(Game::Cart, "Cart");
+                show_option(GameType::AppearTest, "Appear Test");
+                show_option(GameType::Cart, "Cart");
             });
 
             egui::TopBottomPanel::bottom("game_bottom")
@@ -115,7 +126,12 @@ pub fn show_menu_system(
                 .show_inside(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         if ui.button(RichText::new("Play!").size(40.0)).clicked() {
-                            // TODO
+                            commands.insert_resource(CurrentOrdering::init(
+                                &mut orderings,
+                                *ordering,
+                                &art,
+                            ));
+                            commands.insert_resource(NextState(GameState::Play(*game)));
                         }
                     });
                 });
