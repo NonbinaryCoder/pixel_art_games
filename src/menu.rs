@@ -7,6 +7,7 @@ use iyes_loopless::prelude::*;
 
 use crate::{
     art::Art,
+    camera::AreaTrackingProjection,
     game::GameType,
     ordering::{CurrentOrdering, OrderingType, Orderings},
     GameState,
@@ -32,6 +33,7 @@ pub fn show_menu_system(
     mut game: Local<GameType>,
     mut orderings: ResMut<Orderings>,
     art: Res<Art>,
+    mut projection_query: Query<&mut AreaTrackingProjection>,
 ) {
     let window_width = windows.get_primary().map(Window::width).unwrap_or(200.0);
     let set_style = |ui: &mut egui::Ui| {
@@ -131,6 +133,12 @@ pub fn show_menu_system(
                                 *ordering,
                                 &art,
                             ));
+
+                            projection_query.single_mut().tracked_area = Rect {
+                                min: Vec2::new(-1.0, -1.0),
+                                max: art.size().as_vec2(),
+                            };
+
                             commands.insert_resource(NextState(GameState::Play(*game)));
                         }
                     });

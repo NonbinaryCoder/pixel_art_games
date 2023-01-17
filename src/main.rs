@@ -5,6 +5,7 @@ use game::GameType;
 use ordering::OrderingType;
 
 mod art;
+mod camera;
 mod game;
 mod input;
 mod menu;
@@ -16,8 +17,8 @@ fn main() {
         .add_loopless_state(GameState::MainMenu)
         .init_resource::<art::Art>()
         .insert_resource(ClearColor(Color::PURPLE))
-        .add_startup_system(startup_system)
         .add_plugins(DefaultPlugins)
+        .add_plugin(camera::CameraPlugin)
         .add_plugin(game::GamePlugin)
         .add_plugin(menu::MenuPlugin)
         .add_plugin(mesh_generation::MeshGenerationPlugin)
@@ -33,10 +34,4 @@ enum GameState {
     MainMenu,
     Generate(OrderingType),
     Play(GameType),
-}
-
-pub fn startup_system(mut commands: Commands) {
-    let mut bundle = Camera2dBundle::default();
-    bundle.projection.scale = 0.01;
-    commands.spawn(bundle);
 }

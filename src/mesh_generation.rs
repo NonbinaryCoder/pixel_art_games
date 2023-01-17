@@ -123,12 +123,12 @@ impl<'a> MulticolorMeshEditor<'a> {
     pub fn add_quad(&mut self, positions: [Vec2; 4], color: PixelColor) -> &mut Self {
         let positions = positions.map(|pos| [pos.x, pos.y, 0.0]);
         self.positions.extend([
-            positions[0],
+            positions[2],
             positions[1],
-            positions[2],
-            positions[2],
-            positions[3],
             positions[0],
+            positions[0],
+            positions[3],
+            positions[2],
         ]);
         self.colors.extend(iter::repeat(color).take(6));
         self

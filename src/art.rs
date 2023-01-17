@@ -60,6 +60,10 @@ impl Index<UVec2> for Art {
 }
 
 impl Art {
+    pub fn size(&self) -> UVec2 {
+        UVec2::new(self.width as u32, (self.data.len() / self.width) as u32)
+    }
+
     pub fn rows(&self) -> std::slice::Chunks<Option<PixelColor>> {
         self.data.chunks(self.width)
     }
