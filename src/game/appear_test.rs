@@ -41,4 +41,6 @@ fn step_system(
     }
 }
 
-fn exit_system() {}
+fn exit_system(mut commands: Commands, mesh_query: Query<Entity, With<MulticolorMesh>>) {
+    commands.entity(mesh_query.single()).despawn();
+}
