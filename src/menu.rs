@@ -6,7 +6,7 @@ use bevy_egui::{
 use iyes_loopless::prelude::*;
 
 use crate::{
-    art::Art,
+    art::{Art, ArtName},
     camera::AreaTrackingProjection,
     game::GameType,
     ordering::{CurrentOrdering, OrderingType, Orderings},
@@ -17,8 +17,16 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SystemLabel)]
+        struct Label;
+
         app.add_plugin(EguiPlugin)
-            .add_system(show_menu_system.run_in_state(GameState::MainMenu));
+            .add_system(
+                show_menu_system
+                    .run_in_state(GameState::MainMenu)
+                    .after(Label),
+            )
+            .add_system(awaiting_image_system.label(Label));
     }
 }
 
@@ -45,6 +53,7 @@ pub fn show_menu_system(
     let mut set_ordering = *ordering;
     egui::SidePanel::left("ordering")
         .min_width(window_width / 2.0 - 15.0)
+        .max_width(window_width / 2.0)
         .resizable(false)
         .show(egui_context.ctx_mut(), |ui| {
             set_style(ui);
@@ -104,7 +113,8 @@ pub fn show_menu_system(
 
     let mut set_game = *game;
     egui::SidePanel::right("game")
-        .min_width(window_width / 2.0 - 15.0)
+        .min_width(window_width / 2.0)
+        .max_width(window_width / 2.0)
         .resizable(false)
         .show_separator_line(false)
         .show(egui_context.ctx_mut(), |ui| {
@@ -145,4 +155,42 @@ pub fn show_menu_system(
                 });
         });
     *game = set_game;
+}
+
+fn awaiting_image_system(
+    mut commands: Commands,
+    state: Res<CurrentState<GameState>>,
+    mut egui_context: ResMut<EguiContext>,
+    art_name: Option<Res<ArtName>>,
+    mut file_events: EventReader<FileDragAndDrop>,
+) {
+    if let Some(art_name) = art_name {
+        art_name.show(egui_context.ctx_mut())
+    }
+
+    if state.0 == GameState::AwaitingImage {
+        egui::CentralPanel::default().show(egui_context.ctx_mut(), |ui| {
+            ui.centered_and_justified(|ui| {
+                ui.heading(RichText::new("Drag image here to begin").size(100.0));
+            });
+        });
+    }
+
+    for file_event in file_events.iter() {
+        if let FileDragAndDrop::DroppedFile { path_buf, .. } = file_event {
+            match Art::load_from_path(path_buf) {
+                Ok(art) => {
+                    commands.insert_resource(art);
+                    commands.insert_resource(ArtName(path_buf.file_name().map_or_else(
+                        || "{unknown}".to_owned(),
+                        |name| name.to_string_lossy().to_string(),
+                    )));
+                    commands.insert_resource(NextState(GameState::MainMenu));
+                }
+                Err(err) => {
+                    commands.insert_resource(ArtName(err));
+                }
+            }
+        }
+    }
 }

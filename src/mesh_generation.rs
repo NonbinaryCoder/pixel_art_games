@@ -7,7 +7,7 @@ use bevy::{
     sprite::Mesh2dHandle,
 };
 
-use crate::{art::Pixel, PixelColor};
+use crate::art::{Pixel, PixelColor};
 
 pub struct MeshGenerationPlugin;
 
@@ -130,7 +130,8 @@ impl<'a> MulticolorMeshEditor<'a> {
             positions[3],
             positions[2],
         ]);
-        self.colors.extend(iter::repeat(color).take(6));
+        self.colors
+            .extend(iter::repeat(<[f32; 4]>::from(color)).take(6));
         self
     }
 }

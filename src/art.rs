@@ -1,8 +1,28 @@
-use std::ops::Index;
+use std::{ops::Index, path::Path};
 
 use bevy::prelude::*;
+use bevy_editor_pls::egui::{self, RichText};
 
-use crate::PixelColor;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PixelColor([u8; 4]);
+
+impl From<[u8; 4]> for PixelColor {
+    fn from(value: [u8; 4]) -> Self {
+        Self(value)
+    }
+}
+
+impl From<PixelColor> for Color {
+    fn from(value: PixelColor) -> Self {
+        Color::rgba_u8(value.0[0], value.0[1], value.0[2], value.0[3])
+    }
+}
+
+impl From<PixelColor> for [f32; 4] {
+    fn from(value: PixelColor) -> Self {
+        Color::from(value).as_linear_rgba_f32()
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Pixel {
@@ -25,32 +45,6 @@ pub struct Art {
     data: Vec<Option<PixelColor>>,
 }
 
-impl Default for Art {
-    fn default() -> Self {
-        Self {
-            width: 4,
-            data: vec![
-                Some([0.0, 0.0, 0.0, 1.0]),
-                Some([1.0, 1.0, 1.0, 1.0]),
-                Some([1.0, 1.0, 1.0, 1.0]),
-                Some([1.0, 1.0, 0.0, 1.0]),
-                Some([1.0, 1.0, 1.0, 1.0]),
-                None,
-                None,
-                Some([1.0, 1.0, 1.0, 1.0]),
-                Some([1.0, 1.0, 1.0, 1.0]),
-                None,
-                None,
-                Some([1.0, 1.0, 1.0, 1.0]),
-                Some([1.0, 0.0, 1.0, 1.0]),
-                Some([1.0, 1.0, 1.0, 1.0]),
-                Some([1.0, 1.0, 1.0, 1.0]),
-                Some([0.0, 1.0, 1.0, 1.0]),
-            ],
-        }
-    }
-}
-
 impl Index<UVec2> for Art {
     type Output = Option<PixelColor>;
 
@@ -60,11 +54,41 @@ impl Index<UVec2> for Art {
 }
 
 impl Art {
+    pub fn load_from_path(path: &Path) -> Result<Self, String> {
+        let image = image::io::Reader::open(path)
+            .map_err(|e| format!("Unable to open file: {e}"))?
+            .decode()
+            .map_err(|e| format!("Unable to decode image: {e}"))?
+            .into_rgba8();
+
+        Ok(Self {
+            width: image.width() as usize,
+            data: image
+                .pixels()
+                .map(|&image::Rgba(p)| (p[3] > 0).then_some(p.into()))
+                .collect(),
+        })
+    }
+
     pub fn size(&self) -> UVec2 {
         UVec2::new(self.width as u32, (self.data.len() / self.width) as u32)
     }
 
     pub fn rows(&self) -> std::slice::Chunks<Option<PixelColor>> {
         self.data.chunks(self.width)
+    }
+}
+
+#[derive(Debug, Resource)]
+pub struct ArtName(pub String);
+
+impl ArtName {
+    pub fn show(&self, context: &egui::Context) {
+        egui::TopBottomPanel::bottom("art_name")
+            .show_separator_line(false)
+            .resizable(false)
+            .show(context, |ui| {
+                ui.label(RichText::new(&self.0).size(30.0));
+            });
     }
 }

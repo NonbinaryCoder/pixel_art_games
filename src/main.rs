@@ -1,3 +1,6 @@
+use std::{env, path::Path};
+
+use art::{Art, ArtName};
 use bevy::prelude::*;
 use iyes_loopless::prelude::*;
 
@@ -13,10 +16,26 @@ mod mesh_generation;
 mod ordering;
 
 fn main() {
-    App::new()
-        .add_loopless_state(GameState::MainMenu)
-        .init_resource::<art::Art>()
-        .insert_resource(ClearColor(Color::PURPLE))
+    let mut enter_state = GameState::AwaitingImage;
+    let mut app = App::new();
+    if let Some(path) = env::args().nth(1) {
+        let path = Path::new(&path);
+        match Art::load_from_path(path) {
+            Ok(art) => {
+                app.insert_resource(art);
+                app.insert_resource(ArtName(path.file_name().map_or_else(
+                    || "{unknown}".to_owned(),
+                    |name| name.to_string_lossy().to_string(),
+                )));
+                enter_state = GameState::MainMenu;
+            }
+            Err(err) => {
+                app.insert_resource(ArtName(err));
+            }
+        }
+    }
+    app.add_loopless_state(enter_state)
+        .insert_resource(ClearColor(Color::WHITE))
         .add_plugins(DefaultPlugins)
         .add_plugin(camera::CameraPlugin)
         .add_plugin(game::GamePlugin)
@@ -26,11 +45,10 @@ fn main() {
         .run();
 }
 
-type PixelColor = [f32; 4];
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 enum GameState {
     #[default]
+    AwaitingImage,
     MainMenu,
     Generate(OrderingType),
     Play(GameType),
