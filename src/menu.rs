@@ -26,7 +26,11 @@ impl Plugin for MenuPlugin {
                     .run_in_state(GameState::MainMenu)
                     .after(Label),
             )
-            .add_system(awaiting_image_system.label(Label));
+            .add_system(
+                awaiting_image_system
+                    .run_if(GameState::current_is_menu)
+                    .label(Label),
+            );
     }
 }
 

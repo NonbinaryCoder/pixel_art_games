@@ -53,3 +53,13 @@ enum GameState {
     Generate(OrderingType),
     Play(GameType),
 }
+
+impl GameState {
+    pub fn is_menu(self) -> bool {
+        matches!(self, Self::AwaitingImage | Self::MainMenu)
+    }
+
+    pub fn current_is_menu(state: Res<CurrentState<Self>>) -> bool {
+        state.0.is_menu()
+    }
+}
