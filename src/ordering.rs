@@ -44,6 +44,10 @@ impl Orderings {
             r.as_ref().unwrap()
         }
     }
+
+    pub fn clear(&mut self) {
+        *self = Self::default()
+    }
 }
 
 #[derive(Debug, Resource)]

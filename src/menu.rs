@@ -26,11 +26,7 @@ impl Plugin for MenuPlugin {
                     .run_in_state(GameState::MainMenu)
                     .after(Label),
             )
-            .add_system(
-                awaiting_image_system
-                    .run_if(GameState::current_is_menu)
-                    .label(Label),
-            );
+            .add_system(awaiting_image_system.label(Label));
     }
 }
 
@@ -167,17 +163,20 @@ fn awaiting_image_system(
     mut egui_context: ResMut<EguiContext>,
     art_name: Option<Res<ArtName>>,
     mut file_events: EventReader<FileDragAndDrop>,
+    mut orderings: ResMut<Orderings>,
 ) {
-    if let Some(art_name) = art_name {
-        art_name.show(egui_context.ctx_mut())
-    }
+    if state.0.is_menu() {
+        if let Some(art_name) = art_name {
+            art_name.show(egui_context.ctx_mut())
+        }
 
-    if state.0 == GameState::AwaitingImage {
-        egui::CentralPanel::default().show(egui_context.ctx_mut(), |ui| {
-            ui.centered_and_justified(|ui| {
-                ui.heading(RichText::new("Drag image here to begin").size(100.0));
+        if state.0 == GameState::AwaitingImage {
+            egui::CentralPanel::default().show(egui_context.ctx_mut(), |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.heading(RichText::new("Drag image here to begin").size(100.0));
+                });
             });
-        });
+        }
     }
 
     for file_event in file_events.iter() {
@@ -190,6 +189,7 @@ fn awaiting_image_system(
                         |name| name.to_string_lossy().to_string(),
                     )));
                     commands.insert_resource(NextState(GameState::MainMenu));
+                    orderings.clear();
                 }
                 Err(err) => {
                     commands.insert_resource(ArtName(err));
