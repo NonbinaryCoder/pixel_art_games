@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use iyes_loopless::prelude::*;
 
 use crate::{
-    input::FORWARD_KEYS,
+    input::{FORWARD_KEYS, REPEAT_STEP_DURATION, WAIT_REPEAT_DURATION},
     mesh_generation::{MulticolorMesh, MulticolorMeshMaterial},
     ordering::CurrentOrdering,
     GameState,
@@ -20,12 +20,20 @@ impl Plugin for AppearTestPlugin {
     }
 }
 
+#[derive(Debug, Resource)]
+enum State {
+    None,
+    Wait(Timer),
+    Repeat(Timer),
+}
+
 fn enter_system(
     mut commands: Commands,
     material: Res<MulticolorMeshMaterial>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     MulticolorMesh::generate(&mut commands, &material, &mut meshes);
+    commands.insert_resource(State::None);
 }
 
 fn step_system(
@@ -33,11 +41,32 @@ fn step_system(
     mut order: ResMut<CurrentOrdering>,
     mut meshes: ResMut<Assets<Mesh>>,
     keys: Res<Input<KeyCode>>,
+    mut state: ResMut<State>,
+    time: Res<Time>,
 ) {
     if keys.any_just_pressed(FORWARD_KEYS) {
-        if let Some(pixel) = order.next() {
-            query.single().edit(&mut meshes).add_pixel(pixel);
+        *state = State::Wait(Timer::new(WAIT_REPEAT_DURATION, TimerMode::Once));
+        query
+            .single()
+            .edit(&mut meshes)
+            .add_next_from_ordering(&mut order);
+    } else if keys.any_pressed(FORWARD_KEYS) {
+        match &mut *state {
+            State::None => unreachable!(),
+            State::Wait(timer) => {
+                if timer.tick(time.delta()).finished() {
+                    *state = State::Repeat(Timer::new(REPEAT_STEP_DURATION, TimerMode::Repeating));
+                }
+            }
+            State::Repeat(timer) => {
+                let mut editor = query.single().edit(&mut meshes);
+                for _ in 0..timer.tick(time.delta()).times_finished_this_tick() {
+                    editor.add_next_from_ordering(&mut order);
+                }
+            }
         }
+    } else {
+        *state = State::None;
     }
 }
 

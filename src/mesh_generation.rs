@@ -7,7 +7,10 @@ use bevy::{
     sprite::Mesh2dHandle,
 };
 
-use crate::art::{Pixel, PixelColor};
+use crate::{
+    art::{Pixel, PixelColor},
+    ordering::CurrentOrdering,
+};
 
 pub struct MeshGenerationPlugin;
 
@@ -96,6 +99,12 @@ impl<'a> MulticolorMeshEditor<'a> {
             Self { positions, colors }
         } else {
             panic!()
+        }
+    }
+
+    pub fn add_next_from_ordering(&mut self, ordering: &mut CurrentOrdering) {
+        if let Some(pixel) = ordering.next() {
+            self.add_pixel(pixel);
         }
     }
 
