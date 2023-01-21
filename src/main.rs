@@ -1,9 +1,9 @@
 use std::{env, path::Path};
 
-use art::{Art, ArtName};
 use bevy::prelude::*;
 use iyes_loopless::prelude::*;
 
+use art::{Art, ArtName};
 use game::GameType;
 use ordering::OrderingType;
 
@@ -35,7 +35,7 @@ fn main() {
         }
     }
     app.add_loopless_state(enter_state)
-        .insert_resource(ClearColor(Color::WHITE))
+        .insert_resource(ClearColor(Color::GRAY))
         .add_plugins(DefaultPlugins)
         .add_plugin(camera::CameraPlugin)
         .add_plugin(game::GamePlugin)
@@ -61,5 +61,13 @@ impl GameState {
 
     pub fn current_is_menu(state: Res<CurrentState<Self>>) -> bool {
         state.0.is_menu()
+    }
+
+    pub fn is_play(self) -> bool {
+        matches!(self, GameState::Play(_))
+    }
+
+    pub fn current_is_play(state: Res<CurrentState<Self>>) -> bool {
+        state.0.is_play()
     }
 }

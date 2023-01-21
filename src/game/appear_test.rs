@@ -52,7 +52,7 @@ fn step_system(
             .add_next_from_ordering(&mut order);
     } else if keys.any_pressed(FORWARD_KEYS) {
         match &mut *state {
-            State::None => unreachable!(),
+            State::None => *state = State::Wait(Timer::new(WAIT_REPEAT_DURATION, TimerMode::Once)),
             State::Wait(timer) => {
                 if timer.tick(time.delta()).finished() {
                     *state = State::Repeat(Timer::new(REPEAT_STEP_DURATION, TimerMode::Repeating));

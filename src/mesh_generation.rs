@@ -1,9 +1,7 @@
 use std::iter;
 
 use bevy::{
-    ecs::system::EntityCommands,
-    prelude::*,
-    render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat},
+    ecs::system::EntityCommands, prelude::*, render::render_resource::PrimitiveTopology,
     sprite::Mesh2dHandle,
 };
 
@@ -20,23 +18,10 @@ impl Plugin for MeshGenerationPlugin {
     }
 }
 
-fn startup_system(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    commands.insert_resource(MulticolorMeshMaterial(materials.add(ColorMaterial::from(
-        images.add(Image::new(
-            Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            TextureDimension::D2,
-            vec![255, 255, 255, 255],
-            TextureFormat::Rgba8Unorm,
-        )),
-    ))));
+fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+    commands.insert_resource(MulticolorMeshMaterial(
+        materials.add(ColorMaterial::default()),
+    ));
 }
 
 #[derive(Debug, Resource)]
