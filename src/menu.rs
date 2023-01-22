@@ -104,7 +104,13 @@ pub fn show_menu_system(
                 .show_inside(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         if ui.button(RichText::new("Generate!").size(40.0)).clicked() {
-                            // TODO
+                            let size = art.size().as_vec2();
+                            projection_query.single_mut().tracked_area = Rect {
+                                min: Vec2::new(-1.0, -size.y),
+                                max: Vec2::new(size.x, 1.0),
+                            };
+
+                            commands.insert_resource(NextState(GameState::Generate(*ordering)))
                         }
                     });
                 });
@@ -144,9 +150,10 @@ pub fn show_menu_system(
                                 &art,
                             ));
 
+                            let size = art.size().as_vec2();
                             projection_query.single_mut().tracked_area = Rect {
-                                min: Vec2::new(-1.0, -1.0),
-                                max: art.size().as_vec2(),
+                                min: Vec2::new(-1.0, -size.y),
+                                max: Vec2::new(size.x, 1.0),
                             };
 
                             commands.insert_resource(NextState(GameState::Play(*game)));

@@ -37,6 +37,10 @@ impl Pixel {
             color,
         }
     }
+
+    pub fn world_pos(&self) -> Vec2 {
+        self.pos.as_vec2() * Vec2::new(1.0, -1.0)
+    }
 }
 
 #[derive(Debug, Resource)]
@@ -61,6 +65,10 @@ impl Art {
             .map_err(|e| format!("Unable to decode image: {e}"))?
             .into_rgba8();
 
+        if image.width() < 2 || image.height() < 2 {
+            return Err("Image must be at least 2x2".to_owned());
+        }
+
         Ok(Self {
             width: image.width() as usize,
             data: image
@@ -70,12 +78,24 @@ impl Art {
         })
     }
 
+    pub fn width(&self) -> u32 {
+        self.width as u32
+    }
+
+    pub fn height(&self) -> u32 {
+        (self.data.len() / self.width) as u32
+    }
+
     pub fn size(&self) -> UVec2 {
-        UVec2::new(self.width as u32, (self.data.len() / self.width) as u32)
+        UVec2::new(self.width(), self.height())
     }
 
     pub fn rows(&self) -> std::slice::Chunks<Option<PixelColor>> {
         self.data.chunks(self.width)
+    }
+
+    pub fn pixel(&self, pos: UVec2) -> Option<Pixel> {
+        self[pos].map(|color| Pixel { pos, color })
     }
 }
 

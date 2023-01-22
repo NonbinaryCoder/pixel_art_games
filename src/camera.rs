@@ -29,7 +29,7 @@ pub struct AreaTrackingProjection {
 
 fn startup_system(mut commands: Commands) {
     let projection = AreaTrackingProjection::default();
-    let transform = Transform::from_xyz(0.0, 0.0, projection.far - 0.1);
+    let transform = Transform::from_xyz(0.0, 0.0, projection.far - 100.1);
     let view_projection = projection.get_projection_matrix() * transform.compute_matrix().inverse();
     let frustum = Frustum::from_view_projection(
         &view_projection,
@@ -61,8 +61,8 @@ impl CameraProjection for AreaTrackingProjection {
             Mat4::orthographic_rh(
                 midpoint - half_width,
                 midpoint + half_width,
-                self.tracked_area.max.y,
                 self.tracked_area.min.y,
+                self.tracked_area.max.y,
                 self.near,
                 self.far,
             )
@@ -73,8 +73,8 @@ impl CameraProjection for AreaTrackingProjection {
             Mat4::orthographic_rh(
                 self.tracked_area.min.x,
                 self.tracked_area.max.x,
-                midpoint + half_height,
                 midpoint - half_height,
+                midpoint + half_height,
                 self.near,
                 self.far,
             )

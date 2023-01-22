@@ -14,7 +14,7 @@ impl Plugin for GamePlugin {
         app.add_plugin(appear_test::AppearTestPlugin)
             .add_startup_system(startup_system)
             .add_system(exit_game_system.run_if_not(GameState::current_is_menu))
-            .add_system(set_colors_system.run_if(GameState::current_is_play));
+            .add_system(set_colors_system.run_if_not(GameState::current_is_menu));
     }
 }
 
@@ -27,10 +27,26 @@ pub enum GameType {
 
 #[derive(Debug, Resource)]
 pub struct Colors {
-    primary_color: Color,
-    primary_material: Handle<ColorMaterial>,
-    secondary_color: Color,
-    secondary_material: Handle<ColorMaterial>,
+    pub primary_color: Color,
+    pub primary_material: Handle<ColorMaterial>,
+    pub secondary_color: Color,
+    pub secondary_material: Handle<ColorMaterial>,
+}
+
+impl Colors {
+    pub fn color(&self, typ: ColorType) -> Color {
+        match typ {
+            ColorType::Primary => self.primary_color,
+            ColorType::Secondary => self.secondary_color,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(dead_code)]
+pub enum ColorType {
+    Primary,
+    Secondary,
 }
 
 fn startup_system(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
@@ -60,6 +76,7 @@ fn set_colors_system(
     mut colors: ResMut<Colors>,
     mut primary_hex: Local<Option<String>>,
     mut secondary_hex: Local<Option<String>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     *showed_last = windows
         .primary()
@@ -102,8 +119,14 @@ fn set_colors_system(
                     changed
                 };
                 color_edit(&mut clear_color.0, &mut clear_color_hex);
-                color_edit(&mut colors.primary_color, &mut primary_hex);
-                color_edit(&mut colors.secondary_color, &mut secondary_hex);
+                if color_edit(&mut colors.primary_color, &mut primary_hex) {
+                    materials.get_mut(&colors.primary_material).unwrap().color =
+                        colors.primary_color;
+                }
+                if color_edit(&mut colors.secondary_color, &mut secondary_hex) {
+                    materials.get_mut(&colors.secondary_material).unwrap().color =
+                        colors.secondary_color;
+                }
             })
         },
     );

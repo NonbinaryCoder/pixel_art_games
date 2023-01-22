@@ -2,13 +2,17 @@ use bevy::prelude::*;
 
 use crate::art::{Art, Pixel};
 
+mod lines;
 mod orderings;
+
+const SPEED: f32 = 6.0;
 
 pub struct OrderingPlugin;
 
 impl Plugin for OrderingPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Orderings>()
+            .add_plugin(lines::LinesPlugin)
             .add_plugin(orderings::OrderingsPlugin);
     }
 }

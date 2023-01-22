@@ -14,6 +14,7 @@ mod input;
 mod menu;
 mod mesh_generation;
 mod ordering;
+mod prefabs;
 
 fn main() {
     let mut enter_state = GameState::AwaitingImage;
@@ -42,6 +43,7 @@ fn main() {
         .add_plugin(menu::MenuPlugin)
         .add_plugin(mesh_generation::MeshGenerationPlugin)
         .add_plugin(ordering::OrderingPlugin)
+        .add_plugin(prefabs::PrefabsPlugin)
         .run();
 }
 
@@ -61,13 +63,5 @@ impl GameState {
 
     pub fn current_is_menu(state: Res<CurrentState<Self>>) -> bool {
         state.0.is_menu()
-    }
-
-    pub fn is_play(self) -> bool {
-        matches!(self, GameState::Play(_))
-    }
-
-    pub fn current_is_play(state: Res<CurrentState<Self>>) -> bool {
-        state.0.is_play()
     }
 }

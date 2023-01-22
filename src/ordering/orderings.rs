@@ -7,5 +7,7 @@ pub mod spiral;
 pub struct OrderingsPlugin;
 
 impl Plugin for OrderingsPlugin {
-    fn build(&self, app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.add_plugin(default::DefaultPlugin);
+    }
 }

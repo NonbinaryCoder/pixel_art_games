@@ -94,7 +94,11 @@ impl<'a> MulticolorMeshEditor<'a> {
     }
 
     pub fn add_pixel(&mut self, pixel: Pixel) -> &mut Self {
-        self.add_square(pixel.pos.as_vec2(), 1.0, pixel.color)
+        self.add_square(pixel.world_pos(), 1.0, pixel.color)
+    }
+
+    pub fn add_small_pixel(&mut self, pixel: Pixel) -> &mut Self {
+        self.add_square(pixel.world_pos(), 0.8, pixel.color)
     }
 
     pub fn add_square(&mut self, pos: Vec2, size: f32, color: PixelColor) -> &mut Self {
@@ -117,12 +121,12 @@ impl<'a> MulticolorMeshEditor<'a> {
     pub fn add_quad(&mut self, positions: [Vec2; 4], color: PixelColor) -> &mut Self {
         let positions = positions.map(|pos| [pos.x, pos.y, 0.0]);
         self.positions.extend([
-            positions[2],
+            positions[0],
             positions[1],
-            positions[0],
-            positions[0],
-            positions[3],
             positions[2],
+            positions[2],
+            positions[3],
+            positions[0],
         ]);
         self.colors
             .extend(iter::repeat(<[f32; 4]>::from(color)).take(6));
