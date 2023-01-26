@@ -1,3 +1,5 @@
+#![warn(clippy::todo)]
+
 use std::{env, path::Path};
 
 use bevy::prelude::*;
@@ -10,11 +12,13 @@ use ordering::OrderingType;
 mod art;
 mod camera;
 mod game;
+mod grid;
 mod input;
 mod menu;
 mod mesh_generation;
 mod ordering;
 mod prefabs;
+mod side;
 
 fn main() {
     let mut enter_state = GameState::AwaitingImage;
@@ -64,4 +68,8 @@ impl GameState {
     pub fn current_is_menu(state: Res<CurrentState<Self>>) -> bool {
         state.0.is_menu()
     }
+}
+
+fn world_pos(pos: UVec2) -> Vec2 {
+    pos.as_vec2() * Vec2::new(1.0, -1.0)
 }

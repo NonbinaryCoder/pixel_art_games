@@ -3,8 +3,17 @@ use std::{ops::Index, path::Path};
 use bevy::prelude::*;
 use bevy_editor_pls::egui::{self, RichText};
 
+use crate::{grid::Grid, world_pos};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PixelColor([u8; 4]);
+
+impl PixelColor {
+    pub fn transparent(self) -> Self {
+        let p = self.0;
+        PixelColor([p[0], p[1], p[2], p[3] / 2])
+    }
+}
 
 impl From<[u8; 4]> for PixelColor {
     fn from(value: [u8; 4]) -> Self {
@@ -39,21 +48,18 @@ impl Pixel {
     }
 
     pub fn world_pos(&self) -> Vec2 {
-        self.pos.as_vec2() * Vec2::new(1.0, -1.0)
+        world_pos(self.pos)
     }
 }
 
 #[derive(Debug, Resource)]
-pub struct Art {
-    width: usize,
-    data: Vec<Option<PixelColor>>,
-}
+pub struct Art(Grid<Option<PixelColor>>);
 
 impl Index<UVec2> for Art {
     type Output = Option<PixelColor>;
 
     fn index(&self, index: UVec2) -> &Self::Output {
-        &self.data[index.y as usize * self.width + index.x as usize]
+        &self.0[index]
     }
 }
 
@@ -69,29 +75,32 @@ impl Art {
             return Err("Image must be at least 2x2".to_owned());
         }
 
-        Ok(Self {
-            width: image.width() as usize,
-            data: image
-                .pixels()
-                .map(|&image::Rgba(p)| (p[3] > 0).then_some(p.into()))
-                .collect(),
-        })
+        let data: Vec<_> = image
+            .pixels()
+            .map(|&image::Rgba(p)| (p[3] > 0).then_some(p.into()))
+            .collect();
+
+        if data.iter().any(|p| p.is_some()) {
+            Ok(Art(Grid::from_vec(data, image.width() as usize)))
+        } else {
+            Err("Image must have at least one pixel".to_owned())
+        }
     }
 
     pub fn width(&self) -> u32 {
-        self.width as u32
+        self.0.width()
     }
 
     pub fn height(&self) -> u32 {
-        (self.data.len() / self.width) as u32
+        self.0.height()
     }
 
     pub fn size(&self) -> UVec2 {
-        UVec2::new(self.width(), self.height())
+        self.0.size()
     }
 
     pub fn rows(&self) -> std::slice::Chunks<Option<PixelColor>> {
-        self.data.chunks(self.width)
+        self.0.rows()
     }
 
     pub fn pixel(&self, pos: UVec2) -> Option<Pixel> {

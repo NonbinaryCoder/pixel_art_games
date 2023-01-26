@@ -6,12 +6,14 @@ use iyes_loopless::prelude::*;
 use crate::{input::EXIT_KEYS, GameState};
 
 mod appear_test;
+mod cart;
 
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(appear_test::AppearTestPlugin)
+            .add_plugin(cart::CartPlugin)
             .add_startup_system(startup_system)
             .add_system(exit_game_system.run_if_not(GameState::current_is_menu))
             .add_system(set_colors_system.run_if_not(GameState::current_is_menu));
