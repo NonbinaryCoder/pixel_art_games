@@ -39,6 +39,24 @@ impl Side {
         }
     }
 
+    pub const fn rotate_left(self) -> Self {
+        match self {
+            Side::Top => Side::Left,
+            Side::Right => Side::Top,
+            Side::Bottom => Side::Right,
+            Side::Left => Side::Bottom,
+        }
+    }
+
+    pub const fn rotate_right(self) -> Self {
+        match self {
+            Side::Top => Side::Right,
+            Side::Right => Side::Bottom,
+            Side::Bottom => Side::Left,
+            Side::Left => Side::Top,
+        }
+    }
+
     pub const fn rotate_left_corner(self) -> Corner {
         match self {
             Side::Top => Corner::TopLeft,

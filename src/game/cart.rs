@@ -17,7 +17,7 @@ const STATE: GameState = GameState::Play(GameType::Cart);
 
 const CART_HEIGHT: f32 = 0.2;
 
-const SPEED: f32 = 1.5;
+const SPEED: f32 = 3.0;
 const FALL_SPEED: f32 = 2.0;
 
 pub struct CartPlugin;
@@ -212,6 +212,12 @@ fn move_cart_system(
     let checked_add_inside =
         |a, b| checked_add(a, b).filter(|pos| pos.x < art.width() && pos.y < art.height());
 
+    let ground_set = |pos, offset| {
+        checked_add_inside(pos, offset)
+            .map(|pos| ground.0[pos])
+            .unwrap_or(false)
+    };
+
     let get_direction = || match (keys.any_pressed(LEFT_KEYS), keys.any_pressed(RIGHT_KEYS)) {
         (true, false) => Some(-1.0),
         (false, true) => Some(1.0),
@@ -261,19 +267,35 @@ fn move_cart_system(
                         }
                     }
                     if *distance < -CART_HEIGHT {
-                        *cart = Cart::CrossingCorner {
-                            pixel: *pixel,
-                            corner: side.rotate_left_corner(),
-                            distance: *distance + 1.0,
-                            on_outside: true,
-                        };
+                        let dir = side.rotate_left().art_direction();
+                        if ground_set(*pixel, dir) {
+                            if *distance < -0.5 {
+                                *pixel = checked_add(*pixel, dir).unwrap();
+                                *distance += 1.0;
+                            }
+                        } else {
+                            *cart = Cart::CrossingCorner {
+                                pixel: *pixel,
+                                corner: side.rotate_left_corner(),
+                                distance: *distance + 1.0,
+                                on_outside: true,
+                            };
+                        }
                     } else if *distance > CART_HEIGHT {
-                        *cart = Cart::CrossingCorner {
-                            pixel: *pixel,
-                            corner: side.rotate_right_corner(),
-                            distance: *distance - CART_HEIGHT,
-                            on_outside: true,
-                        };
+                        let dir = side.rotate_right().art_direction();
+                        if ground_set(*pixel, dir) {
+                            if *distance > 0.5 {
+                                *pixel = checked_add(*pixel, dir).unwrap();
+                                *distance -= 1.0;
+                            }
+                        } else {
+                            *cart = Cart::CrossingCorner {
+                                pixel: *pixel,
+                                corner: side.rotate_right_corner(),
+                                distance: *distance - CART_HEIGHT,
+                                on_outside: true,
+                            };
+                        }
                     }
                 } else {
                     todo!()
@@ -322,15 +344,13 @@ fn move_cart_system(
             *velocity += time.delta_seconds() * FALL_SPEED;
             *offset += *velocity * time.delta_seconds();
             if *offset > 1.0 {
+                let direction = side.art_direction();
+                *pixel = checked_add_inside(*pixel, direction).unwrap();
+                let above_set = ground_set(*pixel, direction);
                 if !*finished_drawling {
                     ground.0[*pixel] = true;
                     *finished_drawling = true;
                 }
-                let direction = side.art_direction();
-                *pixel = checked_add_inside(*pixel, direction).unwrap();
-                let above_set = checked_add_inside(*pixel, direction)
-                    .map(|pos| ground.0[pos])
-                    .unwrap_or(false);
                 if !above_set {
                     *cart = Cart::OnSide {
                         pixel: *pixel,
@@ -486,14 +506,15 @@ fn draw_pixel_system(
 }
 
 fn move_next_pixel_system(mut query: Query<(&mut NextPixel, &mut Transform)>, time: Res<Time>) {
-    let (mut next_pixel, mut transform) = query.single_mut();
-    if next_pixel.t < 1.0 {
-        next_pixel.t += time.delta_seconds();
-        let t = next_pixel.t.min(1.0);
-        transform.translation = next_pixel
-            .start_pos
-            .lerp(next_pixel.ideal_pos, ezing::quart_inout(t))
-            .extend(-1.0);
+    if let Ok((mut next_pixel, mut transform)) = query.get_single_mut() {
+        if next_pixel.t < 1.0 {
+            next_pixel.t += time.delta_seconds();
+            let t = next_pixel.t.min(1.0);
+            transform.translation = next_pixel
+                .start_pos
+                .lerp(next_pixel.ideal_pos, ezing::quart_inout(t))
+                .extend(-1.0);
+        }
     }
 }
 
