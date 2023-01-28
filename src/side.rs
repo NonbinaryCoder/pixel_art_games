@@ -1,5 +1,3 @@
-use std::ops::Neg;
-
 use bevy::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -11,19 +9,33 @@ pub enum Side {
 }
 
 impl Side {
+    pub const fn art_direction(self) -> IVec2 {
+        match self {
+            Side::Top => IVec2::NEG_Y,
+            Side::Right => IVec2::X,
+            Side::Bottom => IVec2::Y,
+            Side::Left => IVec2::NEG_X,
+        }
+    }
+
+    pub const fn world_direction(self) -> Vec2 {
+        match self {
+            Side::Top => Vec2::Y,
+            Side::Right => Vec2::X,
+            Side::Bottom => Vec2::NEG_Y,
+            Side::Left => Vec2::NEG_X,
+        }
+    }
+
     /// If the provided vector is facing toward `Side::Top`,
     /// returns a vector facing `self`
-    pub fn rotate_direction<T>(self, dir: T) -> T
-    where
-        T: Vector2d,
-        T::Val: Neg<Output = T::Val>,
-    {
-        let [x, y] = dir.decompose();
+    pub fn rotate_world_direction(self, dir: Vec2) -> Vec2 {
+        let Vec2 { x, y } = dir;
         match self {
-            Side::Top => T::new(x, y),
-            Side::Right => T::new(y, -x),
-            Side::Bottom => T::new(-x, -y),
-            Side::Left => T::new(-y, x),
+            Side::Top => Vec2::new(x, y),
+            Side::Right => Vec2::new(y, -x),
+            Side::Bottom => Vec2::new(-x, -y),
+            Side::Left => Vec2::new(-y, x),
         }
     }
 
@@ -71,25 +83,5 @@ impl Corner {
             Corner::BottomRight => Side::Bottom,
             Corner::BottomLeft => Side::Left,
         }
-    }
-}
-
-pub trait Vector2d {
-    type Val;
-
-    fn decompose(self) -> [Self::Val; 2];
-
-    fn new(x: Self::Val, y: Self::Val) -> Self;
-}
-
-impl Vector2d for Vec2 {
-    type Val = f32;
-
-    fn decompose(self) -> [Self::Val; 2] {
-        [self.x, self.y]
-    }
-
-    fn new(x: Self::Val, y: Self::Val) -> Self {
-        Self::new(x, y)
     }
 }
