@@ -39,6 +39,15 @@ impl Side {
         }
     }
 
+    pub const fn flip(self) -> Self {
+        match self {
+            Side::Top => Side::Bottom,
+            Side::Right => Side::Left,
+            Side::Bottom => Side::Top,
+            Side::Left => Side::Right,
+        }
+    }
+
     pub const fn rotate_left(self) -> Self {
         match self {
             Side::Top => Side::Left,
@@ -85,6 +94,24 @@ pub enum Corner {
 }
 
 impl Corner {
+    pub const fn rotate_left(self) -> Self {
+        match self {
+            Corner::TopLeft => Corner::BottomLeft,
+            Corner::TopRight => Corner::TopLeft,
+            Corner::BottomRight => Corner::TopRight,
+            Corner::BottomLeft => Corner::BottomRight,
+        }
+    }
+
+    pub const fn rotate_right(self) -> Self {
+        match self {
+            Corner::TopLeft => Corner::TopRight,
+            Corner::TopRight => Corner::BottomRight,
+            Corner::BottomRight => Corner::BottomLeft,
+            Corner::BottomLeft => Corner::TopLeft,
+        }
+    }
+
     pub const fn rotate_left_side(self) -> Side {
         match self {
             Corner::TopLeft => Side::Left,
