@@ -1,4 +1,10 @@
-use bevy::prelude::*;
+use std::{collections::VecDeque, ops::ControlFlow};
+
+use bevy::{
+    prelude::*,
+    tasks::{AsyncComputeTaskPool, Task},
+    utils::HashSet,
+};
 use iyes_loopless::prelude::*;
 
 use crate::{
@@ -7,7 +13,7 @@ use crate::{
     input::{LEFT_KEYS, RIGHT_KEYS},
     mesh_generation::{MulticolorMesh, MulticolorMeshMaterial},
     ordering::CurrentOrdering,
-    side::{Corner, Side},
+    side::{Corner, Edge, LeftRight, Side},
     world_pos, GameState,
 };
 
@@ -19,6 +25,9 @@ const CART_HEIGHT: f32 = 0.2;
 
 const SPEED: f32 = 3.0;
 const FALL_SPEED: f32 = 2.0;
+const ZIP_SPEED: f32 = 1.8;
+
+const ZIP_LABEL_APPEAR_SPEED: f32 = 1.0;
 
 pub struct CartPlugin;
 
@@ -46,7 +55,14 @@ impl Plugin for CartPlugin {
                     .after(CartSystem::MoveCart),
             )
             .add_system(move_next_pixel_system.run_in_state(STATE))
+            .add_system(
+                zip_system
+                    .run_in_state(STATE)
+                    .run_if_resource_exists::<FindZipPathTask>(),
+            )
+            .add_system(zip_label_system.run_in_state(STATE))
             .add_system(cart_color_system.run_in_state(STATE))
+            .add_system(zip_label_color_system.run_in_state(STATE))
             .add_exit_system(STATE, exit_system);
     }
 }
@@ -75,6 +91,14 @@ enum Cart {
         velocity: f32,
         finished_drawling: bool,
     },
+    Zipping {
+        pixel: UVec2,
+        side: Side,
+        start: Vec2,
+        end: Vec2,
+        rotation: f32,
+        t: f32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Component)]
@@ -95,6 +119,24 @@ struct DrawlingPixel {
 
 #[derive(Debug, Resource)]
 struct SetPixels(Grid<bool>);
+
+#[derive(Debug, Resource)]
+struct FindZipPathTask(Task<Option<ZipPath>>);
+
+#[derive(Debug, Clone, Copy, Resource)]
+struct ZipPath {
+    start: Edge,
+    end: Edge,
+}
+
+#[derive(Debug, Resource)]
+struct ZipLabelData {
+    growing: bool,
+    t: f32,
+}
+
+#[derive(Debug, Component)]
+struct ZipLabel;
 
 type WithCartOrPiece = Or<(With<Cart>, With<CartPiece>)>;
 
@@ -129,18 +171,60 @@ type WithDrawlingPixelOnly = (
     With<DrawlingPixel>,
 );
 
+impl Edge {
+    fn cart_world_pos(self) -> Vec2 {
+        world_pos(self.pos) + self.side.world_direction() * (1.0 + CART_HEIGHT) * 0.5
+    }
+
+    fn label_world_pos(self) -> Vec2 {
+        world_pos(self.pos) + self.side.world_direction() * (1.0 - CART_HEIGHT) * 0.5
+    }
+}
+
 fn enter_system(
     mut commands: Commands,
     material: Res<MulticolorMeshMaterial>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut ordering: ResMut<CurrentOrdering>,
+    ordering: Res<CurrentOrdering>,
     art: Res<Art>,
     colors: Res<Colors>,
 ) {
-    let (_, mut editor) = MulticolorMesh::generate(&mut commands, &material, &mut meshes);
+    MulticolorMesh::generate(&mut commands, &material, &mut meshes);
 
-    let pixel = ordering.next().unwrap();
-    editor.add_pixel(pixel);
+    let pixel = ordering.peek().unwrap();
+    commands.spawn((
+        SpriteBundle {
+            sprite: Sprite {
+                color: pixel.color.into(),
+                // Fixes appearing in corner for 1 frame
+                custom_size: Some(Vec2::ZERO),
+                ..default()
+            },
+            ..default()
+        },
+        DrawlingPixel {
+            start_pos: world_pos(pixel.pos),
+            grow_dir: Side::Top,
+        },
+    ));
+
+    let pos = pixel.world_pos();
+    commands.spawn((
+        SpriteBundle {
+            transform: Transform::from_translation(pos.extend(-1.0)),
+            sprite: Sprite {
+                color: pixel.color.transparent().into(),
+                custom_size: Some(Vec2::splat(0.8)),
+                ..default()
+            },
+            ..default()
+        },
+        NextPixel {
+            start_pos: pos,
+            ideal_pos: pos,
+            t: 2.0,
+        },
+    ));
 
     let mut grid = Grid::new(art.size());
     grid[pixel.pos] = true;
@@ -174,27 +258,26 @@ fn enter_system(
         CartPiece,
     ));
 
-    if let Some(pixel) = ordering.peek() {
-        let pos = pixel.world_pos();
+    commands.insert_resource(ZipLabelData {
+        growing: false,
+        t: -1.0,
+    });
+    for _ in 0..2 {
         commands.spawn((
             SpriteBundle {
-                transform: Transform::from_translation(pos.extend(-1.0)),
                 sprite: Sprite {
-                    color: pixel.color.transparent().into(),
-                    custom_size: Some(Vec2::splat(0.8)),
+                    color: colors.secondary_color,
                     ..default()
                 },
+                transform: Transform::from_scale(Vec3::ZERO),
                 ..default()
             },
-            NextPixel {
-                start_pos: pos,
-                ideal_pos: pos,
-                t: 2.0,
-            },
+            ZipLabel,
         ));
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn move_cart_system(
     mut commands: Commands,
     mut cart_query: Query<&mut Cart>,
@@ -203,6 +286,7 @@ fn move_cart_system(
     time: Res<Time>,
     ordering: Res<CurrentOrdering>,
     art: Res<Art>,
+    zip_path: Option<Res<ZipPath>>,
 ) {
     fn checked_add(a: UVec2, b: IVec2) -> Option<UVec2> {
         a.x.checked_add_signed(b.x)
@@ -235,6 +319,19 @@ fn move_cart_system(
                 let old_distance = *distance;
                 *distance += direction * time.delta_seconds() * SPEED;
                 if crossed(0.0, old_distance, *distance) {
+                    if let Some(zip_path) = zip_path {
+                        if zip_path.start.pos == *pixel && zip_path.start.side == *side {
+                            *cart = Cart::Zipping {
+                                pixel: zip_path.end.pos,
+                                side: zip_path.end.side,
+                                start: zip_path.start.cart_world_pos(),
+                                end: zip_path.end.cart_world_pos(),
+                                rotation: zip_path.start.side.angle_between(zip_path.end.side),
+                                t: 0.0,
+                            };
+                            return;
+                        }
+                    }
                     if let Some(next_pixel) = ordering.peek() {
                         if Some(next_pixel.pos) == checked_add(*pixel, side.art_direction()) {
                             commands.spawn((
@@ -410,6 +507,45 @@ fn move_cart_system(
             }
             cart.set_changed();
         }
+        Cart::Zipping {
+            pixel,
+            side,
+            start,
+            end,
+            t,
+            ..
+        } => {
+            *t += (time.delta_seconds() * ZIP_SPEED) / start.distance(*end).sqrt();
+            if *t > 1.0 {
+                ground.0[*pixel] = true;
+                let next_pixel = ordering.peek().unwrap();
+                commands.remove_resource::<ZipPath>();
+                if *pixel == next_pixel.pos {
+                    commands.spawn((
+                        SpriteBundle {
+                            sprite: Sprite {
+                                color: next_pixel.color.into(),
+                                // Fixes appearing in corner for 1 frame
+                                custom_size: Some(Vec2::ZERO),
+                                ..default()
+                            },
+                            ..default()
+                        },
+                        DrawlingPixel {
+                            start_pos: (world_pos(*pixel)
+                                + side.rotate_world_direction(Vec2::new(0.0, 0.5))),
+                            grow_dir: *side,
+                        },
+                    ));
+                }
+                *cart = Cart::OnSide {
+                    pixel: *pixel,
+                    side: *side,
+                    distance: 0.0,
+                };
+            }
+            cart.set_changed();
+        }
     }
 }
 
@@ -423,13 +559,13 @@ fn show_cart_system(
 
     if let Ok((cart, mut cart_transform, mut cart_sprite)) = cart_query.get_single_mut() {
         let (mut piece_transform, mut piece_sprite) = piece_query.single_mut();
-        dbg!(&cart);
 
         let mut on_side = |pixel, side: Side, distance, y| {
             let offset = side.rotate_world_direction(Vec2::new(distance, y));
             let pos = world_pos(pixel) + offset;
             cart_transform.translation.x = pos.x;
             cart_transform.translation.y = pos.y;
+            cart_transform.rotation = Quat::IDENTITY;
 
             cart_sprite.custom_size = Some(match side {
                 Side::Top | Side::Bottom => Vec2::new(1.0, CART_HEIGHT),
@@ -437,6 +573,7 @@ fn show_cart_system(
             });
 
             piece_transform.translation = cart_transform.translation;
+            piece_transform.rotation = Quat::IDENTITY;
             piece_sprite.custom_size = cart_sprite.custom_size;
         };
 
@@ -471,6 +608,7 @@ fn show_cart_system(
 
                 cart_transform.translation.x = left_pos.x;
                 cart_transform.translation.y = left_pos.y;
+                cart_transform.rotation = Quat::IDENTITY;
                 cart_sprite.custom_size = Some(match left_side {
                     Side::Top | Side::Bottom => Vec2::new(left_width, CART_HEIGHT),
                     Side::Left | Side::Right => Vec2::new(CART_HEIGHT, left_width),
@@ -478,6 +616,7 @@ fn show_cart_system(
 
                 piece_transform.translation.x = right_pos.x;
                 piece_transform.translation.y = right_pos.y;
+                piece_transform.rotation = Quat::IDENTITY;
                 piece_sprite.custom_size = Some(match right_side {
                     Side::Top | Side::Bottom => Vec2::new(right_width, CART_HEIGHT),
                     Side::Left | Side::Right => Vec2::new(CART_HEIGHT, right_width),
@@ -504,6 +643,7 @@ fn show_cart_system(
 
                 cart_transform.translation.x = left_pos.x;
                 cart_transform.translation.y = left_pos.y;
+                cart_transform.rotation = Quat::IDENTITY;
                 cart_sprite.custom_size = Some(match left_side {
                     Side::Top | Side::Bottom => Vec2::new(left_width, CART_HEIGHT),
                     Side::Left | Side::Right => Vec2::new(CART_HEIGHT, left_width),
@@ -512,6 +652,7 @@ fn show_cart_system(
                 // piece_sprite.custom_size = Some(Vec2::ZERO);
                 piece_transform.translation.x = right_pos.x;
                 piece_transform.translation.y = right_pos.y;
+                piece_transform.rotation = Quat::IDENTITY;
                 piece_sprite.custom_size = Some(match right_side {
                     Side::Top | Side::Bottom => Vec2::new(right_width, CART_HEIGHT),
                     Side::Left | Side::Right => Vec2::new(CART_HEIGHT, right_width),
@@ -523,10 +664,35 @@ fn show_cart_system(
                 offset,
                 ..
             } => on_side(pixel, side, 0.0, outside_y + offset),
+            Cart::Zipping {
+                side,
+                start,
+                end,
+                rotation,
+                t,
+                ..
+            } => {
+                let t = ezing::quad_inout(t);
+                let pos = start.lerp(end, t);
+                cart_transform.translation.x = pos.x;
+                cart_transform.translation.y = pos.y;
+
+                let rotation = rotation * (1.0 - t);
+                cart_transform.rotation = Quat::from_rotation_z(rotation);
+
+                cart_sprite.custom_size = Some(match side {
+                    Side::Top | Side::Bottom => Vec2::new(1.0, CART_HEIGHT),
+                    Side::Left | Side::Right => Vec2::new(CART_HEIGHT, 1.0),
+                });
+
+                *piece_transform = *cart_transform;
+                piece_sprite.custom_size = cart_sprite.custom_size;
+            }
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_pixel_system(
     mut commands: Commands,
     mut pixel_query: Query<
@@ -538,6 +704,8 @@ fn draw_pixel_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut ordering: ResMut<CurrentOrdering>,
     mut next_pixel_query: Query<(&mut NextPixel, &mut Sprite, Entity), WithNextPixelOnly>,
+    set_pixels: Res<SetPixels>,
+    art: Res<Art>,
 ) {
     if let Ok((pixel, mut pixel_transform, mut pixel_sprite, entity)) = pixel_query.get_single_mut()
     {
@@ -565,6 +733,145 @@ fn draw_pixel_system(
                 next_pixel_move.ideal_pos = next_pixel.world_pos();
                 next_pixel_move.t = 0.0;
                 next_pixel_sprite.color = next_pixel.color.transparent().into();
+                let next_pixel = next_pixel.pos;
+                let set_pixels = set_pixels.0.clone();
+                let art_size = art.size();
+                let current_edge = if let Cart::OnSide { pixel, side, .. }
+                | Cart::Falling { pixel, side, .. }
+                | Cart::Zipping { pixel, side, .. } = *cart
+                {
+                    Edge::new(pixel, side)
+                } else {
+                    unreachable!()
+                };
+                commands.insert_resource(FindZipPathTask(AsyncComputeTaskPool::get().spawn(
+                    async move {
+                        fn checked_add(a: UVec2, b: IVec2) -> Option<UVec2> {
+                            a.x.checked_add_signed(b.x)
+                                .zip(a.y.checked_add_signed(b.y))
+                                .map(Into::into)
+                        }
+
+                        let checked_add_inside = |a, b| {
+                            checked_add(a, b).filter(|pos| pos.x < art_size.x && pos.y < art_size.y)
+                        };
+
+                        let ground_set = |pos, offset| {
+                            checked_add_inside(pos, offset)
+                                .map(|pos| set_pixels[pos])
+                                .unwrap_or(false)
+                        };
+
+                        let edge_neighbors = |edge: Edge| {
+                            let traversable = |dir| {
+                                let top_offset = edge.side.art_direction()
+                                    + edge.side.rotate(dir).art_direction();
+                                if ground_set(edge.pos, top_offset) {
+                                    Edge::new(
+                                        checked_add(edge.pos, top_offset).unwrap(),
+                                        edge.side.rotate(!dir),
+                                    )
+                                } else {
+                                    let bottom_offset = edge.side.rotate(dir).art_direction();
+                                    if ground_set(edge.pos, bottom_offset) {
+                                        Edge::new(
+                                            checked_add(edge.pos, bottom_offset).unwrap(),
+                                            edge.side,
+                                        )
+                                    } else {
+                                        Edge::new(edge.pos, edge.side.rotate(dir))
+                                    }
+                                }
+                            };
+
+                            [traversable(LeftRight::Left), traversable(LeftRight::Right)]
+                                .into_iter()
+                        };
+
+                        let search = move |poses: &[(Edge, Vec2)], mut queue: VecDeque<_>| {
+                            queue.clear();
+                            queue.push_back((current_edge, 0));
+
+                            let mut best_start_edge = current_edge;
+                            let mut best_end_edge = current_edge;
+                            let mut best_dist = f32::INFINITY;
+
+                            crate::graph::bfs(
+                                &mut queue,
+                                &mut HashSet::<Edge>::default(),
+                                |edge, _| {
+                                    let world_pos = edge.cart_world_pos();
+                                    let (end_edge, dist) = poses
+                                        .iter()
+                                        .map(|&(edge, pos)| (edge, world_pos.distance_squared(pos)))
+                                        .min_by(|(_, pos1), (_, pos2)| pos1.total_cmp(pos2))
+                                        .unwrap();
+                                    if dist < best_dist {
+                                        best_dist = dist;
+                                        best_start_edge = edge;
+                                        best_end_edge = end_edge;
+                                    }
+                                    enum Never {}
+                                    ControlFlow::<Never, Edge>::Continue(edge)
+                                },
+                                edge_neighbors,
+                            );
+
+                            (best_start_edge != best_end_edge).then_some(ZipPath {
+                                start: best_start_edge,
+                                end: best_end_edge,
+                            })
+                        };
+
+                        let mut start_edges = VecDeque::with_capacity(8);
+                        if next_pixel.y > 0 && set_pixels[next_pixel - UVec2::Y] {
+                            start_edges
+                                .push_back((Edge::new(next_pixel - UVec2::Y, Side::Bottom), 0));
+                        };
+                        if next_pixel.y < art_size.y - 1 && set_pixels[next_pixel + UVec2::Y] {
+                            start_edges.push_back((Edge::new(next_pixel + UVec2::Y, Side::Top), 0));
+                        }
+                        if next_pixel.x > 0 && set_pixels[next_pixel - UVec2::X] {
+                            start_edges
+                                .push_back((Edge::new(next_pixel - UVec2::X, Side::Right), 0));
+                        }
+                        if next_pixel.x < art_size.x - 1 && set_pixels[next_pixel + UVec2::X] {
+                            start_edges
+                                .push_back((Edge::new(next_pixel + UVec2::X, Side::Left), 0));
+                        }
+
+                        if start_edges.is_empty() {
+                            let poses = Side::SIDES
+                                .map(|side| Edge::new(next_pixel, side))
+                                .map(|edge| (edge, edge.cart_world_pos()));
+                            search(&poses, start_edges)
+                        } else {
+                            let mut connected = HashSet::<Edge>::new();
+                            let connected_to_start = crate::graph::bfs(
+                                &mut start_edges,
+                                &mut connected,
+                                |edge, _| {
+                                    if edge == current_edge {
+                                        ControlFlow::Break(())
+                                    } else {
+                                        ControlFlow::Continue(edge)
+                                    }
+                                },
+                                edge_neighbors,
+                            );
+                            connected_to_start
+                                .is_none()
+                                .then(|| {
+                                    let poses: Vec<_> = connected
+                                        .into_iter()
+                                        .map(|edge| (edge, edge.cart_world_pos()))
+                                        .collect();
+                                    search(&poses, start_edges)
+                                })
+                                .flatten()
+                        }
+                    },
+                )))
             } else {
                 commands.entity(next_pixel_entity).despawn();
             }
@@ -592,10 +899,80 @@ fn move_next_pixel_system(mut query: Query<(&mut NextPixel, &mut Transform)>, ti
     }
 }
 
+fn zip_system(mut commands: Commands, mut task: ResMut<FindZipPathTask>) {
+    if let Some(computation) =
+        futures_lite::future::block_on(futures_lite::future::poll_once(&mut task.0))
+    {
+        commands.remove_resource::<FindZipPathTask>();
+        if let Some(path) = computation {
+            commands.insert_resource(path);
+        }
+    }
+}
+
+fn zip_label_system(
+    mut label_query: Query<(&mut Transform, &mut Sprite), With<ZipLabel>>,
+    zip_path: Option<Res<ZipPath>>,
+    mut zip_data: ResMut<ZipLabelData>,
+    time: Res<Time>,
+) {
+    if let Some(zip_path) = zip_path {
+        if zip_path.is_changed() {
+            zip_data.growing = false;
+        }
+        if zip_data.growing {
+            zip_data.t += time.delta_seconds() * ZIP_LABEL_APPEAR_SPEED;
+            zip_data.t = zip_data.t.min(1.0);
+            let scale = Vec3::splat(ezing::quad_out(zip_data.t));
+            for (mut transform, _) in label_query.iter_mut() {
+                transform.scale = scale;
+            }
+        } else {
+            zip_data.t -= time.delta_seconds() * ZIP_LABEL_APPEAR_SPEED;
+            let b = zip_data.t < 0.0;
+            zip_data.t = zip_data.t.max(0.0);
+            let scale = Vec3::splat(ezing::quad_out(zip_data.t));
+            if b {
+                zip_data.growing = true;
+                for ((mut transform, mut sprite), pos) in
+                    label_query.iter_mut().zip([zip_path.start, zip_path.end])
+                {
+                    transform.translation = pos.label_world_pos().extend(0.5);
+                    transform.scale = scale;
+                    sprite.custom_size = Some(match pos.side {
+                        Side::Left | Side::Right => Vec2::new(CART_HEIGHT, 1.0),
+                        Side::Top | Side::Bottom => Vec2::new(1.0, CART_HEIGHT),
+                    })
+                }
+            } else {
+                for (mut transform, _) in label_query.iter_mut() {
+                    transform.scale = scale;
+                }
+            }
+        }
+    } else {
+        zip_data.t -= time.delta_seconds() * ZIP_LABEL_APPEAR_SPEED;
+        zip_data.growing = false;
+        zip_data.t = zip_data.t.max(0.0);
+        let scale = Vec3::splat(ezing::quad_out(zip_data.t));
+        for (mut transform, _) in label_query.iter_mut() {
+            transform.scale = scale;
+        }
+    }
+}
+
 fn cart_color_system(mut query: Query<&mut Sprite, WithCartOrPiece>, colors: Res<Colors>) {
     if colors.is_changed() {
         for mut sprite in &mut query {
             sprite.color = colors.primary_color;
+        }
+    }
+}
+
+fn zip_label_color_system(mut query: Query<&mut Sprite, With<ZipLabel>>, colors: Res<Colors>) {
+    if colors.is_changed() {
+        for mut sprite in &mut query {
+            sprite.color = colors.secondary_color;
         }
     }
 }
@@ -611,6 +988,7 @@ fn exit_system(
             With<NextPixel>,
             With<DrawlingPixel>,
             With<MulticolorMesh>,
+            With<ZipLabel>,
         )>,
     >,
 ) {
@@ -618,6 +996,8 @@ fn exit_system(
         commands.entity(entity).despawn();
     }
     commands.remove_resource::<SetPixels>();
+    commands.remove_resource::<ZipLabelData>();
+    commands.remove_resource::<FindZipPathTask>();
 }
 
 fn crossed<T: PartialOrd>(bound: T, a: T, b: T) -> bool {

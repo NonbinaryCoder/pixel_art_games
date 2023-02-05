@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_editor_pls::egui;
+use bevy_egui::egui;
 use bevy_egui::EguiContext;
 use iyes_loopless::prelude::*;
 

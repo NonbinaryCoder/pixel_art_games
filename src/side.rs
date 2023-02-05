@@ -1,14 +1,18 @@
+use std::ops::Not;
+
 use bevy::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Side {
-    Top,
-    Right,
-    Bottom,
-    Left,
+    Top = 0,
+    Right = 1,
+    Bottom = 2,
+    Left = 3,
 }
 
 impl Side {
+    pub const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
+
     pub const fn art_direction(self) -> IVec2 {
         match self {
             Side::Top => IVec2::NEG_Y,
@@ -24,6 +28,21 @@ impl Side {
             Side::Right => Vec2::X,
             Side::Bottom => Vec2::NEG_Y,
             Side::Left => Vec2::NEG_X,
+        }
+    }
+
+    /// The angle of `self`, `0.0` for `Self::Top`
+    pub fn angle_between(self, other: Self) -> f32 {
+        let s = self as u8;
+        let o = other as u8;
+        if s == o {
+            0.0
+        } else if s + 1 == o {
+            -std::f32::consts::FRAC_PI_2
+        } else if s == o + 1 {
+            std::f32::consts::FRAC_PI_2
+        } else {
+            std::f32::consts::PI
         }
     }
 
@@ -63,6 +82,13 @@ impl Side {
             Side::Right => Side::Bottom,
             Side::Bottom => Side::Left,
             Side::Left => Side::Top,
+        }
+    }
+
+    pub const fn rotate(self, dir: LeftRight) -> Self {
+        match dir {
+            LeftRight::Left => self.rotate_left(),
+            LeftRight::Right => self.rotate_right(),
         }
     }
 
@@ -127,6 +153,35 @@ impl Corner {
             Corner::TopRight => Side::Right,
             Corner::BottomRight => Side::Bottom,
             Corner::BottomLeft => Side::Left,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Edge {
+    pub pos: UVec2,
+    pub side: Side,
+}
+
+impl Edge {
+    pub fn new(pos: UVec2, side: Side) -> Edge {
+        Self { pos, side }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LeftRight {
+    Left,
+    Right,
+}
+
+impl Not for LeftRight {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            LeftRight::Left => LeftRight::Right,
+            LeftRight::Right => LeftRight::Left,
         }
     }
 }

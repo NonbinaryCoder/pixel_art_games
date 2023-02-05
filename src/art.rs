@@ -1,7 +1,7 @@
 use std::{ops::Index, path::Path};
 
 use bevy::prelude::*;
-use bevy_editor_pls::egui::{self, RichText};
+use bevy_egui::egui::{self, RichText};
 
 use crate::{grid::Grid, world_pos};
 

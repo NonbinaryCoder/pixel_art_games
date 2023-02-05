@@ -12,6 +12,7 @@ use ordering::OrderingType;
 mod art;
 mod camera;
 mod game;
+mod graph;
 mod grid;
 mod input;
 mod menu;
